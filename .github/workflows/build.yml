@@ -22,6 +22,16 @@ jobs:
         shell: pwsh
         run: .\Build-Release.ps1
 
+      - name: Upload startup diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Playlista-Media-startup-diagnostics
+          path: |
+            ~\AppData\Local\PlaylistaMP3\logs\startup.log
+            ~\AppData\Local\PlaylistaMP3\logs\installer.log
+          if-no-files-found: ignore
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
