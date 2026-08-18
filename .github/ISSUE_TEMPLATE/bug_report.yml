@@ -1,0 +1,49 @@
+name: Zgłoszenie błędu
+description: Zgłoś powtarzalny problem z aplikacją lub instalatorem.
+title: "[Błąd]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Nie wklejaj ciasteczek, tokenów ani prywatnych linków. Najpierw użyj przycisku „Aktualizuj narzędzia”.
+  - type: input
+    id: version
+    attributes:
+      label: Wersja aplikacji
+      placeholder: "2.0.0"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Wersja Windows
+      placeholder: "Windows 11 24H2 x64"
+    validations:
+      required: true
+  - type: input
+    id: profile
+    attributes:
+      label: Format i jakość
+      placeholder: "Wideo / MP4 / do 1080p"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Kroki odtworzenia
+      description: Napisz dokładnie, co zostało kliknięte i jaki był wynik.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Oczekiwane zachowanie
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Fragment dziennika
+      description: Usuń prywatne adresy URL, nazwy użytkownika i inne dane wrażliwe.
+      render: text
