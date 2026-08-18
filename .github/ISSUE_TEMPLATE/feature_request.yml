@@ -1,0 +1,24 @@
+name: Propozycja funkcji
+description: Zaproponuj zmianę zachowania lub interfejsu.
+title: "[Funkcja]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Jaki problem ma rozwiązać ta funkcja?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proponowane rozwiązanie
+    validations:
+      required: true
+  - type: checkboxes
+    id: legal
+    attributes:
+      label: Zakres
+      options:
+        - label: Propozycja nie dotyczy obchodzenia DRM, płatnych zabezpieczeń ani ograniczeń dostępu.
+          required: true
