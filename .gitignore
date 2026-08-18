@@ -1,0 +1,17 @@
+# Build output
+build/
+bin/
+obj/
+*.exe
+*.pdb
+*.zip
+
+# Visual Studio and editors
+.vs/
+.vscode/
+*.user
+*.suo
+
+# OS files
+Thumbs.db
+Desktop.ini
