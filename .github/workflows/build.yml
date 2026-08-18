@@ -1,0 +1,43 @@
+name: Build Windows installer
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build application and installer
+        shell: pwsh
+        run: .\Build-Release.ps1
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Playlista-Media-Windows-x64
+          path: Playlista_MP3_Setup.exe
+          if-no-files-found: error
+
+      - name: Publish tagged GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${{ github.ref_name }}" 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload "${{ github.ref_name }}" "Playlista_MP3_Setup.exe#Playlista Media — instalator Windows x64" --clobber
+          } else {
+            gh release create "${{ github.ref_name }}" "Playlista_MP3_Setup.exe#Playlista Media — instalator Windows x64" --generate-notes --title "Playlista Media ${{ github.ref_name }}"
+          }
