@@ -1,4 +1,4 @@
-# Playlista Media 2.0
+# Playlista Media 2.0.1
 
 Nowoczesna aplikacja desktopowa dla Windows 10/11, która zapisuje playlisty i pojedyncze materiały z YouTube jako pliki audio lub wideo. Wklejasz link, wybierasz format, jakość i folder — resztę wykonują lokalnie `yt-dlp`, FFmpeg i Deno.
 
@@ -24,9 +24,11 @@ Nowoczesna aplikacja desktopowa dla Windows 10/11, która zapisuje playlisty i p
 1. Pobierz `Playlista_MP3_Setup.exe` z sekcji [Releases](../../releases).
 2. Uruchom instalator, wybierz folder i kliknij „ZAINSTALUJ”.
 3. Przy pierwszej instalacji poczekaj na pobranie `yt-dlp`, FFmpeg i Deno. FFmpeg jest największym składnikiem i przy kolejnych aktualizacjach nie jest pobierany bez potrzeby.
-4. Otwórz **Playlista Media** z pulpitu albo menu Start.
+4. Otwórz **Playlista Media** z jednego skrótu na pulpicie albo z menu Start.
 
 Instalator zapisuje program domyślnie w `%LOCALAPPDATA%\Programs\Playlista Media`, a narzędzia w `%LOCALAPPDATA%\PlaylistaMP3\tools`. Aktualizacja z wersji 1.x zachowuje ustawienia i dotychczasowy folder instalacji.
+
+Przy aktualizacji instalator usuwa znane stare skróty również z pulpitu synchronizowanego przez OneDrive, sprawdza cel nowego skrótu i uruchamia automatyczny test aplikacji przed zakończeniem instalacji. Dzienniki startu znajdują się w `%LOCALAPPDATA%\PlaylistaMP3\logs`.
 
 Instalator nie jest obecnie podpisany certyfikatem code-signing, dlatego Windows SmartScreen może pokazać komunikat o nieznanym wydawcy. Kod instalatora i automatyczny proces budowania są dostępne w tym repozytorium.
 

@@ -18,10 +18,10 @@ namespace PlaylistaMP3
 
         private void InitializeModernWindow()
         {
-            Text = "Playlista Media — 2.0.0";
+            Text = "Playlista Media — 2.0.1";
             StartPosition = FormStartPosition.CenterScreen;
             ClientSize = new Size(1140, 880);
-            MinimumSize = new Size(1040, 850);
+            MinimumSize = new Size(840, 650);
             BackColor = UiCanvas;
             ForeColor = UiText;
             Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
@@ -63,7 +63,7 @@ namespace PlaylistaMP3
             title.Location = new Point(91, 17);
             header.Controls.Add(title);
 
-            Label versionBadge = UiLabel("2.0", 8.5F, FontStyle.Bold, Color.FromArgb(224, 231, 255));
+            Label versionBadge = UiLabel("2.0.1", 8.5F, FontStyle.Bold, Color.FromArgb(224, 231, 255));
             versionBadge.BackColor = Color.FromArgb(76, 70, 170);
             versionBadge.Padding = new Padding(9, 4, 9, 4);
             versionBadge.Location = new Point(310, 27);
@@ -358,6 +358,24 @@ namespace PlaylistaMP3
             elapsedTimer.Interval = 1000;
             elapsedTimer.Tick += delegate { UpdateStatsLabel(); };
             FormClosing += WindowClosing;
+            FitWindowToScreen();
+        }
+
+        private void FitWindowToScreen()
+        {
+            try
+            {
+                Screen screen = Screen.PrimaryScreen;
+                if (screen == null)
+                    return;
+                Rectangle area = screen.WorkingArea;
+                int width = Math.Min(ClientSize.Width, Math.Max(840, area.Width - 56));
+                int height = Math.Min(ClientSize.Height, Math.Max(650, area.Height - 64));
+                ClientSize = new Size(width, height);
+            }
+            catch
+            {
+            }
         }
 
         private void MediaTypeChanged(object sender, EventArgs e)
@@ -644,11 +662,11 @@ namespace PlaylistaMP3
 
         internal RoundedPanel()
         {
-            BackColor = Color.Transparent;
             SetStyle(ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.OptimizedDoubleBuffer |
                      ControlStyles.UserPaint |
                      ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
         }
 
         protected override void OnResize(EventArgs eventArgs)
@@ -840,14 +858,14 @@ namespace PlaylistaMP3
 
         internal ModernCheckBox()
         {
-            ForeColor = Color.FromArgb(220, 226, 240);
-            BackColor = Color.Transparent;
-            Font = new Font("Segoe UI", 9F);
-            Cursor = Cursors.Hand;
             SetStyle(ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.OptimizedDoubleBuffer |
                      ControlStyles.UserPaint |
                      ControlStyles.SupportsTransparentBackColor, true);
+            ForeColor = Color.FromArgb(220, 226, 240);
+            BackColor = Color.Transparent;
+            Font = new Font("Segoe UI", 9F);
+            Cursor = Cursors.Hand;
         }
 
         protected override void OnMouseEnter(EventArgs e)
@@ -944,11 +962,11 @@ namespace PlaylistaMP3
         internal ModernProgressBar()
         {
             style = ProgressBarStyle.Continuous;
-            BackColor = Color.Transparent;
             SetStyle(ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.OptimizedDoubleBuffer |
                      ControlStyles.UserPaint |
                      ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
             marqueeTimer = new Timer();
             marqueeTimer.Interval = marqueeAnimationSpeed;
             marqueeTimer.Tick += delegate
@@ -1041,6 +1059,12 @@ namespace PlaylistaMP3
         internal static GraphicsPath RoundRectangle(Rectangle rectangle, int radius)
         {
             GraphicsPath path = new GraphicsPath();
+            if (rectangle.Width <= 1 || rectangle.Height <= 1)
+            {
+                path.AddRectangle(new Rectangle(rectangle.X, rectangle.Y,
+                    Math.Max(1, rectangle.Width), Math.Max(1, rectangle.Height)));
+                return path;
+            }
             int diameter = Math.Max(1, radius * 2);
             if (diameter > rectangle.Width)
                 diameter = rectangle.Width;

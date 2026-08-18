@@ -1,5 +1,13 @@
 # Historia zmian
 
+## 2.0.1 — 2026-08-18
+
+- naprawiono błąd własnego paska postępu, który zatrzymywał aplikację przed pokazaniem okna;
+- dodano automatyczny test uruchomieniowy aplikacji przed utworzeniem skrótów;
+- dodano czytelne dzienniki błędów startu aplikacji i instalatora;
+- instalator usuwa znane stare skróty z pulpitu lokalnego, OneDrive i menu Start, po czym tworzy tylko jeden aktualny skrót;
+- odświeżono instalator w spójnym, ciemnym interfejsie z kartami, gradientem i nowym ekranem postępu.
+
 ## 2.0.0 — 2026-08-17
 
 - nowy interfejs w ciemnym stylu 2026 z kartami i własnymi kontrolkami;

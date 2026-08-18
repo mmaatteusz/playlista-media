@@ -15,29 +15,124 @@ using System.Windows.Forms;
 [assembly: AssemblyCompany("Playlista Media")]
 [assembly: AssemblyProduct("Playlista Media")]
 [assembly: AssemblyCopyright("Copyright © 2026")]
-[assembly: AssemblyVersion("2.0.0.0")]
-[assembly: AssemblyFileVersion("2.0.0.0")]
+[assembly: AssemblyVersion("2.0.1.0")]
+[assembly: AssemblyFileVersion("2.0.1.0")]
 
 namespace PlaylistaMP3
 {
     internal static class Program
     {
         [STAThread]
-        private static void Main()
+        private static int Main(string[] args)
         {
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
-            Application.ThreadException += delegate(object sender, ThreadExceptionEventArgs e)
+            bool selfTest = HasArgument(args, "/self-test");
+            string logPath = GetStartupLogPath();
+            try
             {
-                MessageBox.Show(
-                    "Wystąpił nieoczekiwany błąd:\n\n" + e.Exception.Message +
-                    "\n\nAplikacja pozostanie otwarta. Szczegóły możesz przekazać autorowi pakietu.",
-                    "Playlista Media — błąd",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            };
-            Application.Run(new MainForm());
+                WriteStartupLog(logPath, "START", null);
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+                Application.ThreadException += delegate(object sender, ThreadExceptionEventArgs e)
+                {
+                    WriteStartupLog(logPath, "BŁĄD WĄTKU INTERFEJSU", e.Exception);
+                    MessageBox.Show(
+                        "Wystąpił nieoczekiwany błąd:\n\n" + e.Exception.Message +
+                        "\n\nSzczegóły zapisano w:\n" + logPath,
+                        "Playlista Media — błąd",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                };
+                AppDomain.CurrentDomain.UnhandledException += delegate(object sender,
+                    UnhandledExceptionEventArgs e)
+                {
+                    WriteStartupLog(logPath, "BŁĄD NIEOBSŁUŻONY", e.ExceptionObject as Exception);
+                };
+
+                if (selfTest)
+                {
+                    using (MainForm form = new MainForm())
+                    {
+                        if (string.IsNullOrWhiteSpace(form.Text))
+                            throw new InvalidOperationException("Okno aplikacji nie zostało zainicjalizowane.");
+                    }
+                    WriteStartupLog(logPath, "SELF-TEST OK", null);
+                    return 0;
+                }
+
+                Application.Run(new MainForm());
+                WriteStartupLog(logPath, "ZAMKNIĘCIE", null);
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                WriteStartupLog(logPath, selfTest ? "SELF-TEST BŁĄD" : "BŁĄD STARTU", ex);
+                if (!selfTest)
+                {
+                    MessageBox.Show(
+                        "Nie udało się uruchomić aplikacji.\n\n" + ex.Message +
+                        "\n\nSzczegóły zapisano w:\n" + logPath,
+                        "Playlista Media — błąd uruchamiania",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+                return 1;
+            }
+        }
+
+        private static bool HasArgument(string[] args, string expected)
+        {
+            if (args == null)
+                return false;
+            foreach (string argument in args)
+            {
+                if (string.Equals(argument, expected, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
+
+        private static string GetStartupLogPath()
+        {
+            try
+            {
+                return Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "PlaylistaMP3", "logs", "startup.log");
+            }
+            catch
+            {
+                return Path.Combine(Path.GetTempPath(), "PlaylistaMP3-startup.log");
+            }
+        }
+
+        private static void WriteStartupLog(string path, string eventName, Exception exception)
+        {
+            try
+            {
+                string directory = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(directory))
+                    Directory.CreateDirectory(directory);
+                if (File.Exists(path) && new FileInfo(path).Length > 512 * 1024)
+                    File.Delete(path);
+
+                StringBuilder line = new StringBuilder();
+                line.Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
+                line.Append(" | ").Append(eventName);
+                line.Append(" | wersja 2.0.1");
+                line.Append(" | CLR ").Append(Environment.Version);
+                line.Append(" | ").Append(Environment.OSVersion);
+                if (exception != null)
+                {
+                    line.AppendLine();
+                    line.Append(exception.ToString());
+                }
+                line.AppendLine();
+                File.AppendAllText(path, line.ToString(), new UTF8Encoding(false));
+            }
+            catch
+            {
+            }
         }
     }
 
@@ -110,7 +205,7 @@ namespace PlaylistaMP3
 #if LEGACY_UI
         private void InitializeWindow()
         {
-            Text = "Playlista Media — 2.0.0";
+            Text = "Playlista Media — 2.0.1";
             StartPosition = FormStartPosition.CenterScreen;
             ClientSize = new Size(900, 880);
             MinimumSize = new Size(780, 840);

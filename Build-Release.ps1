@@ -55,6 +55,13 @@ if ($LASTEXITCODE -ne 0) {
     throw "Budowanie aplikacji nie powiodło się (kod $LASTEXITCODE)."
 }
 
+Write-Host "Test uruchomieniowy aplikacji..." -ForegroundColor Cyan
+$selfTest = Start-Process -FilePath $applicationOutput -ArgumentList "/self-test" -Wait -PassThru
+if ($selfTest.ExitCode -ne 0) {
+    $startupLog = Join-Path $env:LOCALAPPDATA "PlaylistaMP3\logs\startup.log"
+    throw "Test uruchomieniowy aplikacji nie powiódł się (kod $($selfTest.ExitCode)). Dziennik: $startupLog"
+}
+
 $setupArguments = @(
     "/nologo",
     "/target:winexe",
@@ -80,6 +87,13 @@ Write-Host "Budowanie instalatora..." -ForegroundColor Cyan
 & $compiler @setupArguments
 if ($LASTEXITCODE -ne 0) {
     throw "Budowanie instalatora nie powiodło się (kod $LASTEXITCODE)."
+}
+
+Write-Host "Test uruchomieniowy instalatora..." -ForegroundColor Cyan
+$setupSelfTest = Start-Process -FilePath $setupOutput -ArgumentList "/self-test" -Wait -PassThru
+if ($setupSelfTest.ExitCode -ne 0) {
+    $installerLog = Join-Path $env:LOCALAPPDATA "PlaylistaMP3\logs\installer.log"
+    throw "Test uruchomieniowy instalatora nie powiódł się (kod $($setupSelfTest.ExitCode)). Dziennik: $installerLog"
 }
 
 Copy-Item -LiteralPath $setupOutput -Destination $rootSetupOutput -Force

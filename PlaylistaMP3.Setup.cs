@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
@@ -19,15 +21,15 @@ using Microsoft.Win32;
 [assembly: AssemblyCompany("Playlista Media")]
 [assembly: AssemblyProduct("Playlista Media")]
 [assembly: AssemblyCopyright("Copyright © 2026")]
-[assembly: AssemblyVersion("2.0.0.0")]
-[assembly: AssemblyFileVersion("2.0.0.0")]
+[assembly: AssemblyVersion("2.0.1.0")]
+[assembly: AssemblyFileVersion("2.0.1.0")]
 
 namespace PlaylistaMP3Setup
 {
     internal static class Product
     {
         internal const string Name = "Playlista Media";
-        internal const string Version = "2.0.0";
+        internal const string Version = "2.0.1";
         internal const string PreviousName = "Playlista MP3";
         internal const string RegistryPath =
             @"Software\Microsoft\Windows\CurrentVersion\Uninstall\PlaylistaMP3";
@@ -112,7 +114,30 @@ namespace PlaylistaMP3Setup
     internal static class Program
     {
         [STAThread]
-        private static void Main(string[] args)
+        private static int Main(string[] args)
+        {
+            try
+            {
+                Run(args);
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                string logPath = WriteInstallerLog("BŁĄD STARTU INSTALATORA", ex);
+                if (!HasArgument(args, "/self-test"))
+                {
+                    MessageBox.Show(
+                        "Nie udało się uruchomić instalatora.\n\n" + ex.Message +
+                        "\n\nSzczegóły zapisano w:\n" + logPath,
+                        "Playlista Media — błąd instalatora",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+                return 1;
+            }
+        }
+
+        private static void Run(string[] args)
         {
             if (args.Length >= 4 &&
                 string.Equals(args[0], "/cleanup", StringComparison.OrdinalIgnoreCase))
@@ -128,12 +153,27 @@ namespace PlaylistaMP3Setup
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += delegate(object sender, ThreadExceptionEventArgs e)
             {
+                string logPath = WriteInstallerLog("BŁĄD WĄTKU INTERFEJSU", e.Exception);
                 MessageBox.Show(
-                    "Wystąpił nieoczekiwany błąd instalatora:\n\n" + e.Exception.Message,
+                    "Wystąpił nieoczekiwany błąd instalatora:\n\n" + e.Exception.Message +
+                    "\n\nSzczegóły zapisano w:\n" + logPath,
                     "Playlista Media — błąd instalatora",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
             };
+
+            if (HasArgument(args, "/self-test"))
+            {
+                using (SetupForm setup = new SetupForm(false))
+                using (UninstallForm uninstall = new UninstallForm())
+                {
+                    if (string.IsNullOrWhiteSpace(setup.Text) ||
+                        string.IsNullOrWhiteSpace(uninstall.Text))
+                        throw new InvalidOperationException(
+                            "Okna instalatora nie zostały prawidłowo zainicjalizowane.");
+                }
+                return;
+            }
 
             using (Mutex instanceMutex = new Mutex(false, @"Local\PlaylistaMP3.Setup"))
             {
@@ -174,6 +214,29 @@ namespace PlaylistaMP3Setup
             }
         }
 
+        private static string WriteInstallerLog(string eventName, Exception exception)
+        {
+            string path = Path.Combine(Product.DataDirectory, "logs", "installer.log");
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                StringBuilder entry = new StringBuilder();
+                entry.Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                entry.Append(" | ").Append(eventName).Append(" | wersja ").Append(Product.Version);
+                if (exception != null)
+                {
+                    entry.AppendLine();
+                    entry.Append(exception.ToString());
+                }
+                entry.AppendLine();
+                File.AppendAllText(path, entry.ToString(), new UTF8Encoding(false));
+            }
+            catch
+            {
+            }
+            return path;
+        }
+
         private static bool HasArgument(string[] args, string expected)
         {
             foreach (string argument in args)
@@ -204,9 +267,13 @@ namespace PlaylistaMP3Setup
         private const string DenoChecksumUrl =
             "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip.sha256sum";
 
-        private readonly Color navy = Color.FromArgb(15, 23, 42);
-        private readonly Color blue = Color.FromArgb(37, 99, 235);
-        private readonly Color gray = Color.FromArgb(71, 85, 105);
+        private readonly Color navy = Color.FromArgb(238, 242, 255);
+        private readonly Color blue = Color.FromArgb(99, 102, 241);
+        private readonly Color gray = Color.FromArgb(148, 163, 184);
+        private readonly Color canvas = Color.FromArgb(8, 13, 26);
+        private readonly Color card = Color.FromArgb(17, 25, 43);
+        private readonly Color cardAlt = Color.FromArgb(13, 21, 38);
+        private readonly Color border = Color.FromArgb(39, 50, 75);
         private readonly bool toolsOnly;
 
         private Panel pageHost;
@@ -216,7 +283,7 @@ namespace PlaylistaMP3Setup
         private TextBox installPathBox;
         private Button browseButton;
         private CheckBox desktopShortcutCheck;
-        private ProgressBar overallProgressBar;
+        private SetupProgressBar overallProgressBar;
         private Label statusLabel;
         private Label detailLabel;
         private RichTextBox logBox;
@@ -246,10 +313,11 @@ namespace PlaylistaMP3Setup
                 ? "Aktualizacja narzędzi — Playlista Media"
                 : "Instalacja — Playlista Media";
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(760, 610);
+            ClientSize = new Size(820, 650);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
-            BackColor = Color.White;
+            BackColor = canvas;
+            ForeColor = navy;
             Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
             AutoScaleMode = AutoScaleMode.Dpi;
             DoubleBuffered = true;
@@ -269,23 +337,27 @@ namespace PlaylistaMP3Setup
             windowLayout.ColumnCount = 1;
             windowLayout.RowCount = 3;
             windowLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            windowLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 104F));
+            windowLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 116F));
             windowLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            windowLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 72F));
+            windowLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 76F));
             Controls.Add(windowLayout);
 
-            Panel header = new Panel();
+            SetupGradientPanel header = new SetupGradientPanel();
             header.Dock = DockStyle.Fill;
             header.Margin = new Padding(0);
-            header.BackColor = navy;
             windowLayout.Controls.Add(header, 0, 0);
+
+            SetupLogo logo = new SetupLogo();
+            logo.Location = new Point(30, 27);
+            logo.Size = new Size(54, 54);
+            header.Controls.Add(logo);
 
             Label productLabel = new Label();
             productLabel.AutoSize = true;
             productLabel.Text = toolsOnly ? "Aktualizacja narzędzi" : "Playlista Media";
             productLabel.ForeColor = Color.White;
             productLabel.Font = new Font("Segoe UI Semibold", 23F, FontStyle.Bold);
-            productLabel.Location = new Point(31, 17);
+            productLabel.Location = new Point(101, 19);
             header.Controls.Add(productLabel);
 
             Label headerDescription = new Label();
@@ -293,51 +365,63 @@ namespace PlaylistaMP3Setup
             headerDescription.Text = toolsOnly
                 ? "yt-dlp, FFmpeg i środowisko Deno"
                 : "Kreator instalacji • wersja " + Product.Version;
-            headerDescription.ForeColor = Color.FromArgb(191, 219, 254);
+            headerDescription.ForeColor = Color.FromArgb(196, 206, 230);
             headerDescription.Font = new Font("Segoe UI", 10F);
-            headerDescription.Location = new Point(34, 67);
+            headerDescription.Location = new Point(104, 67);
             header.Controls.Add(headerDescription);
+
+            Label versionBadge = new Label();
+            versionBadge.AutoSize = true;
+            versionBadge.Text = "WERSJA " + Product.Version;
+            versionBadge.ForeColor = Color.FromArgb(224, 231, 255);
+            versionBadge.BackColor = Color.FromArgb(76, 70, 170);
+            versionBadge.Font = new Font("Segoe UI Semibold", 8F, FontStyle.Bold);
+            versionBadge.Padding = new Padding(10, 5, 10, 5);
+            versionBadge.Location = new Point(675, 32);
+            header.Controls.Add(versionBadge);
 
             Panel footer = new Panel();
             footer.Dock = DockStyle.Fill;
             footer.Margin = new Padding(0);
-            footer.BackColor = Color.FromArgb(248, 250, 252);
+            footer.BackColor = Color.FromArgb(11, 18, 32);
             footer.Paint += delegate(object sender, PaintEventArgs e)
             {
-                e.Graphics.DrawLine(new Pen(Color.FromArgb(226, 232, 240)), 0, 0, footer.Width, 0);
+                using (Pen pen = new Pen(border))
+                    e.Graphics.DrawLine(pen, 0, 0, footer.Width, 0);
             };
             windowLayout.Controls.Add(footer, 0, 2);
 
-            primaryButton = MakeButton(toolsOnly ? "AKTUALIZUJ" : "ZAINSTALUJ", blue, Color.White);
-            primaryButton.Size = new Size(155, 40);
-            primaryButton.Location = new Point(574, 16);
+            primaryButton = MakeButton(toolsOnly ? "Aktualizuj" : "Zainstaluj", blue, Color.White);
+            primaryButton.Size = new Size(166, 42);
+            primaryButton.Location = new Point(624, 17);
             primaryButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             primaryButton.Click += PrimaryClicked;
             footer.Controls.Add(primaryButton);
 
-            secondaryButton = MakeButton("Anuluj", Color.FromArgb(226, 232, 240), navy);
-            secondaryButton.Size = new Size(112, 40);
-            secondaryButton.Location = new Point(446, 16);
+            secondaryButton = MakeButton("Anuluj", Color.FromArgb(28, 38, 60), navy);
+            secondaryButton.Size = new Size(116, 42);
+            secondaryButton.Location = new Point(492, 17);
             secondaryButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             secondaryButton.Click += SecondaryClicked;
             footer.Controls.Add(secondaryButton);
 
             Label permissionsLabel = new Label();
             permissionsLabel.AutoSize = true;
-            permissionsLabel.Text = "Bez uprawnień administratora";
+            permissionsLabel.Text = "●  Instalacja dla bieżącego użytkownika — bez administratora";
             permissionsLabel.ForeColor = gray;
-            permissionsLabel.Location = new Point(30, 28);
+            permissionsLabel.Location = new Point(30, 30);
             footer.Controls.Add(permissionsLabel);
 
             pageHost = new Panel();
             pageHost.Dock = DockStyle.Fill;
             pageHost.Margin = new Padding(0);
-            pageHost.BackColor = Color.White;
+            pageHost.BackColor = canvas;
             windowLayout.Controls.Add(pageHost, 0, 1);
 
             introPanel = new Panel();
             introPanel.Dock = DockStyle.Fill;
             introPanel.Padding = new Padding(30, 24, 30, 20);
+            introPanel.BackColor = canvas;
             pageHost.Controls.Add(introPanel);
             introPanel.BringToFront();
 
@@ -369,11 +453,20 @@ namespace PlaylistaMP3Setup
                 : "Aplikacja zostanie zainstalowana dla bieżącego użytkownika. Przy pierwszej instalacji wymagane narzędzia są pobierane z internetu.";
             introPanel.Controls.Add(description);
 
+            SetupCard introCard = new SetupCard();
+            introCard.Location = new Point(20, toolsOnly ? 151 : 124);
+            introCard.Size = new Size(780, toolsOnly ? 225 : 318);
+            introCard.FillColor = card;
+            introCard.BorderColor = border;
+            introPanel.Controls.Add(introCard);
+            introCard.SendToBack();
+
             Label folderLabel = new Label();
             folderLabel.AutoSize = true;
             folderLabel.Text = "Folder instalacji";
             folderLabel.Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold);
             folderLabel.ForeColor = navy;
+            folderLabel.BackColor = card;
             folderLabel.Location = new Point(32, 137);
             folderLabel.Visible = !toolsOnly;
             introPanel.Controls.Add(folderLabel);
@@ -382,11 +475,14 @@ namespace PlaylistaMP3Setup
             installPathBox.Location = new Point(32, 163);
             installPathBox.Size = new Size(545, 29);
             installPathBox.Font = new Font("Segoe UI", 10F);
+            installPathBox.BorderStyle = BorderStyle.FixedSingle;
+            installPathBox.BackColor = cardAlt;
+            installPathBox.ForeColor = Color.FromArgb(238, 242, 255);
             installPathBox.Text = Product.InstalledDirectory;
             installPathBox.Visible = !toolsOnly;
             introPanel.Controls.Add(installPathBox);
 
-            browseButton = MakeButton("Wybierz…", Color.FromArgb(226, 232, 240), navy);
+            browseButton = MakeButton("Wybierz…", Color.FromArgb(28, 38, 60), navy);
             browseButton.Location = new Point(592, 160);
             browseButton.Size = new Size(128, 35);
             browseButton.Click += BrowseClicked;
@@ -397,6 +493,8 @@ namespace PlaylistaMP3Setup
             desktopShortcutCheck.AutoSize = true;
             desktopShortcutCheck.Text = "Utwórz skrót na pulpicie";
             desktopShortcutCheck.Checked = true;
+            desktopShortcutCheck.ForeColor = Color.FromArgb(220, 226, 240);
+            desktopShortcutCheck.BackColor = card;
             desktopShortcutCheck.Location = new Point(34, 219);
             desktopShortcutCheck.Visible = !toolsOnly;
             introPanel.Controls.Add(desktopShortcutCheck);
@@ -406,6 +504,7 @@ namespace PlaylistaMP3Setup
             componentsTitle.Text = toolsOnly ? "Aktualizowane składniki" : "Instalowane składniki";
             componentsTitle.Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold);
             componentsTitle.ForeColor = navy;
+            componentsTitle.BackColor = card;
             componentsTitle.Location = new Point(32, toolsOnly ? 171 : 264);
             introPanel.Controls.Add(componentsTitle);
 
@@ -414,16 +513,18 @@ namespace PlaylistaMP3Setup
             components.Size = new Size(680, 72);
             components.Location = new Point(32, toolsOnly ? 198 : 291);
             components.ForeColor = gray;
+            components.BackColor = card;
             components.Text = toolsOnly
                 ? "• yt-dlp — zawsze do najnowszej wersji\n• FFmpeg — tylko jeśli brakuje\n• Deno — tylko jeśli brakuje"
-                : "• Playlista Media 2.0.0\n• Audio: MP3, M4A, Opus, FLAC, WAV\n• Wideo: MP4 i WebM\n• yt-dlp, FFmpeg i Deno";
+                : "• Playlista Media " + Product.Version + "\n• Audio: MP3, M4A, Opus, FLAC, WAV\n• Wideo: MP4 i WebM\n• yt-dlp, FFmpeg i Deno";
             introPanel.Controls.Add(components);
 
             Label dataNote = new Label();
             dataNote.AutoSize = false;
             dataNote.Size = new Size(680, 45);
             dataNote.Location = new Point(32, toolsOnly ? 295 : 363);
-            dataNote.ForeColor = Color.FromArgb(30, 64, 175);
+            dataNote.ForeColor = Color.FromArgb(129, 140, 248);
+            dataNote.BackColor = card;
             dataNote.Text = toolsOnly
                 ? "Aktualizacja nie zmienia ustawień ani pobranych plików."
                 : "Pobrane pliki będą zapisywane wyłącznie w folderze wybranym w aplikacji.";
@@ -435,7 +536,15 @@ namespace PlaylistaMP3Setup
             progressPanel = new Panel();
             progressPanel.Dock = DockStyle.Fill;
             progressPanel.Visible = false;
+            progressPanel.BackColor = canvas;
             pageHost.Controls.Add(progressPanel);
+
+            SetupCard progressCard = new SetupCard();
+            progressCard.Location = new Point(20, 52);
+            progressCard.Size = new Size(780, 382);
+            progressCard.FillColor = card;
+            progressCard.BorderColor = border;
+            progressPanel.Controls.Add(progressCard);
 
             Label title = new Label();
             title.AutoSize = true;
@@ -451,6 +560,7 @@ namespace PlaylistaMP3Setup
             statusLabel.Location = new Point(32, 68);
             statusLabel.Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold);
             statusLabel.ForeColor = navy;
+            statusLabel.BackColor = card;
             statusLabel.Text = "Przygotowywanie…";
             progressPanel.Controls.Add(statusLabel);
 
@@ -459,23 +569,27 @@ namespace PlaylistaMP3Setup
             detailLabel.Size = new Size(690, 24);
             detailLabel.Location = new Point(32, 97);
             detailLabel.ForeColor = gray;
+            detailLabel.BackColor = card;
             progressPanel.Controls.Add(detailLabel);
 
-            overallProgressBar = new ProgressBar();
+            overallProgressBar = new SetupProgressBar();
             overallProgressBar.Location = new Point(32, 130);
-            overallProgressBar.Size = new Size(688, 23);
+            overallProgressBar.Size = new Size(748, 14);
             overallProgressBar.Style = ProgressBarStyle.Continuous;
+            overallProgressBar.BackColor = card;
             progressPanel.Controls.Add(overallProgressBar);
 
             logBox = new RichTextBox();
             logBox.Location = new Point(32, 176);
-            logBox.Size = new Size(688, 224);
+            logBox.Size = new Size(748, 224);
             logBox.ReadOnly = true;
-            logBox.BackColor = Color.FromArgb(248, 250, 252);
-            logBox.BorderStyle = BorderStyle.FixedSingle;
+            logBox.BackColor = cardAlt;
+            logBox.BorderStyle = BorderStyle.None;
             logBox.Font = new Font("Consolas", 8.5F);
-            logBox.ForeColor = Color.FromArgb(51, 65, 85);
+            logBox.ForeColor = Color.FromArgb(181, 194, 219);
             progressPanel.Controls.Add(logBox);
+
+            progressCard.SendToBack();
         }
 
         private void BuildSuccessPage()
@@ -483,22 +597,38 @@ namespace PlaylistaMP3Setup
             successPanel = new Panel();
             successPanel.Dock = DockStyle.Fill;
             successPanel.Visible = false;
+            successPanel.BackColor = canvas;
             pageHost.Controls.Add(successPanel);
+
+            SetupCard successCard = new SetupCard();
+            successCard.Location = new Point(20, 42);
+            successCard.Size = new Size(780, 360);
+            successCard.FillColor = card;
+            successCard.BorderColor = border;
+            successPanel.Controls.Add(successCard);
+
+            SetupSuccessIcon successIcon = new SetupSuccessIcon();
+            successIcon.Location = new Point(35, 61);
+            successIcon.Size = new Size(54, 54);
+            successIcon.BackColor = card;
+            successPanel.Controls.Add(successIcon);
 
             successTitleLabel = new Label();
             successTitleLabel.AutoSize = true;
             successTitleLabel.Text = "Instalacja zakończona";
             successTitleLabel.Font = new Font("Segoe UI Semibold", 20F, FontStyle.Bold);
-            successTitleLabel.ForeColor = Color.FromArgb(21, 128, 61);
-            successTitleLabel.Location = new Point(30, 39);
+            successTitleLabel.ForeColor = Color.FromArgb(52, 211, 153);
+            successTitleLabel.BackColor = card;
+            successTitleLabel.Location = new Point(108, 62);
             successPanel.Controls.Add(successTitleLabel);
 
             successDescriptionLabel = new Label();
             successDescriptionLabel.AutoSize = false;
             successDescriptionLabel.Size = new Size(680, 92);
-            successDescriptionLabel.Location = new Point(33, 91);
+            successDescriptionLabel.Location = new Point(109, 108);
             successDescriptionLabel.Font = new Font("Segoe UI", 10F);
             successDescriptionLabel.ForeColor = gray;
+            successDescriptionLabel.BackColor = card;
             successDescriptionLabel.Text = "Playlista Media jest gotowa do użycia.";
             successPanel.Controls.Add(successDescriptionLabel);
 
@@ -506,29 +636,31 @@ namespace PlaylistaMP3Setup
             launchCheckBox.AutoSize = true;
             launchCheckBox.Text = "Uruchom Playlista Media";
             launchCheckBox.Checked = true;
-            launchCheckBox.Location = new Point(35, 207);
+            launchCheckBox.ForeColor = Color.FromArgb(220, 226, 240);
+            launchCheckBox.BackColor = card;
+            launchCheckBox.Location = new Point(109, 207);
             launchCheckBox.Visible = !toolsOnly;
             successPanel.Controls.Add(launchCheckBox);
 
             Label hint = new Label();
             hint.AutoSize = false;
             hint.Size = new Size(680, 76);
-            hint.Location = new Point(33, 264);
-            hint.ForeColor = Color.FromArgb(30, 64, 175);
+            hint.Location = new Point(109, 264);
+            hint.ForeColor = Color.FromArgb(129, 140, 248);
+            hint.BackColor = card;
             hint.Text = toolsOnly
                 ? "Możesz zamknąć instalator i wrócić do aplikacji."
                 : "Program znajdziesz także w menu Start. Odinstalowanie jest dostępne w Ustawieniach Windows → Aplikacje.";
             successPanel.Controls.Add(hint);
+            successCard.SendToBack();
         }
 
         private Button MakeButton(string text, Color background, Color foreground)
         {
-            Button button = new Button();
+            SetupButton button = new SetupButton();
             button.Text = text;
-            button.FlatStyle = FlatStyle.Flat;
-            button.FlatAppearance.BorderSize = 0;
-            button.BackColor = background;
-            button.ForeColor = foreground;
+            button.FillColor = background;
+            button.TextColor = foreground;
             button.Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold);
             button.Cursor = Cursors.Hand;
             return button;
@@ -716,11 +848,12 @@ namespace PlaylistaMP3Setup
             {
                 if (!toolsOnly)
                 {
-                    SetProgress(3, "Instalowanie aplikacji", installDirectory);
+                    SetProgress(3, "Sprawdzanie i instalowanie aplikacji", installDirectory);
                     AppendLog("Instalowanie Playlista Media " + Product.Version);
                     InstallApplicationFiles(installDirectory, token);
                     installedApplicationPath = Path.Combine(installDirectory,
                         Product.ApplicationFileName);
+                    AppendLog("Test uruchomieniowy aplikacji: zaliczony");
                 }
 
                 token.ThrowIfCancellationRequested();
@@ -856,7 +989,8 @@ namespace PlaylistaMP3Setup
             Directory.CreateDirectory(installDirectory);
 
             WriteEmbeddedResource(ApplicationResourceName,
-                Path.Combine(installDirectory, Product.ApplicationFileName));
+                Path.Combine(installDirectory, Product.ApplicationFileName),
+                VerifyApplicationExecutable);
             WriteEmbeddedResource(ReadmeResourceName,
                 Path.Combine(installDirectory, "README.md"));
             WriteEmbeddedResource(LicenseResourceName,
@@ -879,23 +1013,76 @@ namespace PlaylistaMP3Setup
 
         private static void WriteEmbeddedResource(string resourceName, string targetPath)
         {
+            WriteEmbeddedResource(resourceName, targetPath, null);
+        }
+
+        private static void WriteEmbeddedResource(string resourceName, string targetPath,
+            Action<string> validator)
+        {
             using (Stream input = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName))
             {
                 if (input == null)
                     throw new InvalidOperationException("Brakuje składnika instalatora: " + resourceName);
 
-                string temporaryTarget = targetPath + ".new";
+                string temporaryTarget = targetPath + (validator == null ? ".new" : ".new.exe");
                 using (FileStream output = new FileStream(temporaryTarget,
                     FileMode.Create, FileAccess.Write, FileShare.None))
                     input.CopyTo(output);
 
                 try
                 {
+                    if (validator != null)
+                        validator(temporaryTarget);
                     File.Copy(temporaryTarget, targetPath, true);
                 }
                 finally
                 {
                     SafeDeleteFile(temporaryTarget);
+                }
+            }
+        }
+
+        private static void VerifyApplicationExecutable(string path)
+        {
+            AssertPortableExecutable(path);
+            FileInfo file = new FileInfo(path);
+            if (file.Length < 64 * 1024)
+                throw new InvalidDataException("Plik aplikacji w instalatorze jest niekompletny.");
+
+            FileVersionInfo version = FileVersionInfo.GetVersionInfo(path);
+            if (!string.Equals(version.FileVersion, Product.Version + ".0",
+                StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException(
+                    "Instalator zawiera niewłaściwą wersję aplikacji.");
+
+            ProcessStartInfo info = new ProcessStartInfo();
+            info.FileName = path;
+            info.Arguments = "/self-test";
+            info.WorkingDirectory = Path.GetDirectoryName(path);
+            info.UseShellExecute = false;
+            info.CreateNoWindow = true;
+
+            using (Process process = Process.Start(info))
+            {
+                if (process == null)
+                    throw new InvalidOperationException("Nie udało się uruchomić testu aplikacji.");
+                if (!process.WaitForExit(20000))
+                {
+                    try
+                    {
+                        process.Kill();
+                    }
+                    catch
+                    {
+                    }
+                    throw new InvalidOperationException(
+                        "Test uruchomieniowy aplikacji nie zakończył się w wymaganym czasie.");
+                }
+                if (process.ExitCode != 0)
+                {
+                    string logPath = Path.Combine(Product.DataDirectory, "logs", "startup.log");
+                    throw new InvalidOperationException(
+                        "Aplikacja nie przeszła testu uruchomieniowego. Szczegóły: " + logPath);
                 }
             }
         }
@@ -967,7 +1154,7 @@ namespace PlaylistaMP3Setup
                 ? "Narzędzia używane do pobierania zostały przygotowane."
                 : "Playlista Media " + Product.Version + " została zainstalowana w:\n" + installDirectory;
             primaryButton.Enabled = true;
-            primaryButton.Text = toolsOnly ? "ZAMKNIJ" : "ZAKOŃCZ";
+            primaryButton.Text = toolsOnly ? "Zamknij" : "Zakończ";
             secondaryButton.Visible = false;
         }
 
@@ -981,7 +1168,7 @@ namespace PlaylistaMP3Setup
             browseButton.Enabled = true;
             desktopShortcutCheck.Enabled = true;
             primaryButton.Enabled = true;
-            primaryButton.Text = toolsOnly ? "SPRÓBUJ PONOWNIE" : "SPRÓBUJ PONOWNIE";
+            primaryButton.Text = "Spróbuj ponownie";
             secondaryButton.Text = "Zamknij";
             MessageBox.Show(this, message,
                 error ? "Instalacja nie powiodła się" : "Operacja anulowana",
@@ -1154,14 +1341,22 @@ namespace PlaylistaMP3Setup
         {
             string applicationPath = Path.Combine(installDirectory, Product.ApplicationFileName);
             string setupPath = Path.Combine(installDirectory, Product.SetupFileName);
+            if (!File.Exists(applicationPath) || !File.Exists(setupPath))
+                throw new FileNotFoundException(
+                    "Nie można utworzyć skrótów, ponieważ brakuje plików aplikacji.");
+            AssertPortableExecutable(applicationPath);
+
             string programsDirectory =
                 Environment.GetFolderPath(Environment.SpecialFolder.Programs);
             string desktopDirectory =
                 Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            if (string.IsNullOrWhiteSpace(programsDirectory))
+                throw new InvalidOperationException("System Windows nie zwrócił ścieżki menu Start.");
+            if (desktopShortcut && string.IsNullOrWhiteSpace(desktopDirectory))
+                throw new InvalidOperationException("System Windows nie zwrócił ścieżki pulpitu.");
 
-            // Aktualizacja z wersji 1.x: usuń skróty pod poprzednią nazwą produktu.
-            SafeDeleteDirectory(Path.Combine(programsDirectory, Product.PreviousName));
-            SafeDeleteFile(Path.Combine(desktopDirectory, Product.PreviousName + ".lnk"));
+            // Aktualizacja usuwa dokładnie znane stare skróty, również z pulpitu OneDrive.
+            CleanupProductShortcuts();
 
             string startMenuDirectory = Path.Combine(
                 programsDirectory, Product.Name);
@@ -1177,10 +1372,86 @@ namespace PlaylistaMP3Setup
             string desktopLink = Path.Combine(
                 desktopDirectory, Product.Name + ".lnk");
             if (desktopShortcut)
+            {
                 CreateShortcut(desktopLink, applicationPath, string.Empty, installDirectory,
                     "Pobieranie playlist YouTube do plików audio i wideo");
-            else
-                SafeDeleteFile(desktopLink);
+                if (!File.Exists(desktopLink))
+                    throw new IOException("System Windows nie zapisał skrótu na pulpicie.");
+            }
+        }
+
+        internal static void CleanupProductShortcuts()
+        {
+            string[] shortcutNames =
+            {
+                Product.Name,
+                Product.PreviousName,
+                "PlaylistaMP3",
+                "Playlista do MP3",
+                "Playlista → MP3",
+                "Playlista MP3 Windows",
+                "Playlista Media (1)",
+                "Playlista Media (2)",
+                "Playlista MP3 (1)",
+                "Playlista Media - Skrót"
+            };
+
+            foreach (string desktopDirectory in GetDesktopDirectories())
+            {
+                foreach (string shortcutName in shortcutNames)
+                    SafeDeleteFile(Path.Combine(desktopDirectory, shortcutName + ".lnk"));
+            }
+
+            foreach (string programsDirectory in GetProgramsDirectories())
+            {
+                foreach (string shortcutName in shortcutNames)
+                    SafeDeleteDirectory(Path.Combine(programsDirectory, shortcutName));
+            }
+        }
+
+        private static IEnumerable<string> GetDesktopDirectories()
+        {
+            HashSet<string> directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AddDirectory(directories,
+                Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
+            AddDirectory(directories,
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory));
+
+            string profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrWhiteSpace(profile))
+                AddDirectory(directories, Path.Combine(profile, "Desktop"));
+
+            string[] oneDriveVariables = { "OneDrive", "OneDriveConsumer", "OneDriveCommercial" };
+            foreach (string variable in oneDriveVariables)
+            {
+                string oneDrive = Environment.GetEnvironmentVariable(variable);
+                if (!string.IsNullOrWhiteSpace(oneDrive))
+                    AddDirectory(directories, Path.Combine(oneDrive, "Desktop"));
+            }
+            return directories;
+        }
+
+        private static IEnumerable<string> GetProgramsDirectories()
+        {
+            HashSet<string> directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AddDirectory(directories,
+                Environment.GetFolderPath(Environment.SpecialFolder.Programs));
+            AddDirectory(directories,
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms));
+            return directories;
+        }
+
+        private static void AddDirectory(HashSet<string> directories, string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return;
+            try
+            {
+                directories.Add(Path.GetFullPath(path));
+            }
+            catch
+            {
+            }
         }
 
         private static void CleanupPartialInstallation(string installDirectory)
@@ -1197,12 +1468,7 @@ namespace PlaylistaMP3Setup
             foreach (string file in files)
                 SafeDeleteFile(Path.Combine(installDirectory, file));
 
-            string desktopLink = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
-                Product.Name + ".lnk");
-            SafeDeleteFile(desktopLink);
-            SafeDeleteDirectory(Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.Programs), Product.Name));
+            CleanupProductShortcuts();
             try
             {
                 Registry.CurrentUser.DeleteSubKeyTree(Product.RegistryPath, false);
@@ -1225,6 +1491,13 @@ namespace PlaylistaMP3Setup
         private static void CreateShortcut(string shortcutPath, string targetPath,
             string arguments, string workingDirectory, string description)
         {
+            if (!File.Exists(targetPath))
+                throw new FileNotFoundException("Nie istnieje plik docelowy skrótu.", targetPath);
+            string shortcutDirectory = Path.GetDirectoryName(shortcutPath);
+            if (!string.IsNullOrEmpty(shortcutDirectory))
+                Directory.CreateDirectory(shortcutDirectory);
+            SafeDeleteFile(shortcutPath);
+
             Type shellType = Type.GetTypeFromProgID("WScript.Shell");
             if (shellType == null)
                 throw new InvalidOperationException("System Windows nie udostępnił mechanizmu tworzenia skrótów.");
@@ -1249,6 +1522,8 @@ namespace PlaylistaMP3Setup
                     null, shortcut, new object[] { targetPath + ",0" });
                 shortcutType.InvokeMember("Save", BindingFlags.InvokeMethod,
                     null, shortcut, null);
+                if (!File.Exists(shortcutPath))
+                    throw new IOException("Nie udało się zapisać skrótu: " + shortcutPath);
             }
             finally
             {
@@ -1341,6 +1616,275 @@ namespace PlaylistaMP3Setup
             }
             catch
             {
+            }
+        }
+    }
+
+    internal static class SetupUiGeometry
+    {
+        internal static GraphicsPath RoundRectangle(Rectangle rectangle, int radius)
+        {
+            GraphicsPath path = new GraphicsPath();
+            if (rectangle.Width <= 1 || rectangle.Height <= 1)
+            {
+                path.AddRectangle(new Rectangle(rectangle.X, rectangle.Y,
+                    Math.Max(1, rectangle.Width), Math.Max(1, rectangle.Height)));
+                return path;
+            }
+
+            int diameter = Math.Min(Math.Min(radius * 2, rectangle.Width), rectangle.Height);
+            diameter = Math.Max(2, diameter);
+            Rectangle arc = new Rectangle(rectangle.Location, new Size(diameter, diameter));
+            path.AddArc(arc, 180, 90);
+            arc.X = rectangle.Right - diameter;
+            path.AddArc(arc, 270, 90);
+            arc.Y = rectangle.Bottom - diameter;
+            path.AddArc(arc, 0, 90);
+            arc.X = rectangle.Left;
+            path.AddArc(arc, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
+    }
+
+    internal sealed class SetupGradientPanel : Panel
+    {
+        internal SetupGradientPanel()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.UserPaint, true);
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            if (ClientRectangle.Width <= 0 || ClientRectangle.Height <= 0)
+                return;
+            using (LinearGradientBrush brush = new LinearGradientBrush(ClientRectangle,
+                Color.FromArgb(20, 28, 58), Color.FromArgb(48, 35, 100), 0F))
+                e.Graphics.FillRectangle(brush, ClientRectangle);
+        }
+    }
+
+    internal sealed class SetupCard : Panel
+    {
+        internal Color FillColor = Color.FromArgb(17, 25, 43);
+        internal Color BorderColor = Color.FromArgb(39, 50, 75);
+
+        internal SetupCard()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.UserPaint |
+                     ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle rectangle = new Rectangle(0, 0, Math.Max(1, Width - 1),
+                Math.Max(1, Height - 1));
+            using (GraphicsPath path = SetupUiGeometry.RoundRectangle(rectangle, 18))
+            using (SolidBrush brush = new SolidBrush(FillColor))
+            using (Pen pen = new Pen(BorderColor))
+            {
+                e.Graphics.FillPath(brush, path);
+                e.Graphics.DrawPath(pen, path);
+            }
+        }
+    }
+
+    internal sealed class SetupButton : Button
+    {
+        private bool hovered;
+        private bool pressed;
+        internal Color FillColor = Color.FromArgb(99, 102, 241);
+        internal Color TextColor = Color.White;
+
+        internal SetupButton()
+        {
+            FlatStyle = FlatStyle.Flat;
+            FlatAppearance.BorderSize = 0;
+            SetStyle(ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.UserPaint, true);
+        }
+
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            hovered = true;
+            Invalidate();
+            base.OnMouseEnter(e);
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            hovered = false;
+            pressed = false;
+            Invalidate();
+            base.OnMouseLeave(e);
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            pressed = true;
+            Invalidate();
+            base.OnMouseDown(e);
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            pressed = false;
+            Invalidate();
+            base.OnMouseUp(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Color start = Enabled ? FillColor : Color.FromArgb(45, 55, 75);
+            Color end = FillColor == Color.FromArgb(99, 102, 241)
+                ? Color.FromArgb(37, 99, 235) : start;
+            Color text = Enabled ? TextColor : Color.FromArgb(112, 125, 145);
+            if (hovered && Enabled)
+            {
+                start = ControlPaint.Light(start, 0.08F);
+                end = ControlPaint.Light(end, 0.08F);
+            }
+            if (pressed && Enabled)
+            {
+                start = ControlPaint.Dark(start, 0.08F);
+                end = ControlPaint.Dark(end, 0.08F);
+            }
+
+            Rectangle rectangle = new Rectangle(0, 0, Math.Max(1, Width - 1),
+                Math.Max(1, Height - 1));
+            using (GraphicsPath path = SetupUiGeometry.RoundRectangle(rectangle, 11))
+            using (LinearGradientBrush brush = new LinearGradientBrush(rectangle, start, end, 0F))
+            {
+                e.Graphics.FillPath(brush, path);
+                if (FillColor != Color.FromArgb(99, 102, 241))
+                {
+                    using (Pen pen = new Pen(Color.FromArgb(52, 65, 91)))
+                        e.Graphics.DrawPath(pen, path);
+                }
+            }
+            TextRenderer.DrawText(e.Graphics, Text, Font, rectangle, text,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                TextFormatFlags.EndEllipsis);
+        }
+    }
+
+    internal sealed class SetupProgressBar : Control
+    {
+        private int progressValue;
+        private ProgressBarStyle style;
+
+        public int Value
+        {
+            get { return progressValue; }
+            set
+            {
+                progressValue = Math.Max(0, Math.Min(100, value));
+                Invalidate();
+            }
+        }
+
+        public ProgressBarStyle Style
+        {
+            get { return style; }
+            set { style = value; Invalidate(); }
+        }
+
+        internal SetupProgressBar()
+        {
+            style = ProgressBarStyle.Continuous;
+            SetStyle(ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.UserPaint |
+                     ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle track = new Rectangle(0, 0, Math.Max(1, Width - 1),
+                Math.Max(1, Height - 1));
+            using (GraphicsPath path = SetupUiGeometry.RoundRectangle(track, Height / 2))
+            using (SolidBrush brush = new SolidBrush(Color.FromArgb(31, 42, 66)))
+                e.Graphics.FillPath(brush, path);
+
+            int fillWidth = (int)Math.Round(track.Width * progressValue / 100D);
+            if (fillWidth <= 0)
+                return;
+            Rectangle fill = new Rectangle(0, 0, fillWidth, track.Height);
+            GraphicsState state = e.Graphics.Save();
+            using (GraphicsPath trackPath = SetupUiGeometry.RoundRectangle(track, Height / 2))
+            {
+                e.Graphics.SetClip(trackPath);
+                using (LinearGradientBrush brush = new LinearGradientBrush(fill,
+                    Color.FromArgb(129, 140, 248), Color.FromArgb(14, 165, 233), 0F))
+                    e.Graphics.FillRectangle(brush, fill);
+            }
+            e.Graphics.Restore(state);
+        }
+    }
+
+    internal sealed class SetupLogo : Control
+    {
+        internal SetupLogo()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.UserPaint |
+                     ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle box = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
+            using (GraphicsPath path = SetupUiGeometry.RoundRectangle(box, 16))
+            using (LinearGradientBrush brush = new LinearGradientBrush(box,
+                Color.FromArgb(99, 102, 241), Color.FromArgb(14, 165, 233), 45F))
+                e.Graphics.FillPath(brush, path);
+
+            Point[] play =
+            {
+                new Point(19, 14), new Point(19, 40), new Point(40, 27)
+            };
+            e.Graphics.FillPolygon(Brushes.White, play);
+        }
+    }
+
+    internal sealed class SetupSuccessIcon : Control
+    {
+        internal SetupSuccessIcon()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.UserPaint |
+                     ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle circle = new Rectangle(1, 1, Math.Max(1, Width - 3), Math.Max(1, Height - 3));
+            using (SolidBrush brush = new SolidBrush(Color.FromArgb(16, 94, 72)))
+                e.Graphics.FillEllipse(brush, circle);
+            using (Pen pen = new Pen(Color.FromArgb(110, 231, 183), 4F))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                e.Graphics.DrawLines(pen, new[]
+                {
+                    new Point(14, 28), new Point(23, 37), new Point(41, 17)
+                });
             }
         }
     }
@@ -1526,14 +2070,7 @@ namespace PlaylistaMP3Setup
 
         private static void DeleteShortcuts()
         {
-            string desktopDirectory =
-                Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-            string programsDirectory =
-                Environment.GetFolderPath(Environment.SpecialFolder.Programs);
-            SetupForm.SafeDeleteFile(Path.Combine(desktopDirectory, Product.Name + ".lnk"));
-            SetupForm.SafeDeleteFile(Path.Combine(desktopDirectory, Product.PreviousName + ".lnk"));
-            SetupForm.SafeDeleteDirectory(Path.Combine(programsDirectory, Product.Name));
-            SetupForm.SafeDeleteDirectory(Path.Combine(programsDirectory, Product.PreviousName));
+            SetupForm.CleanupProductShortcuts();
         }
 
         private static bool IsExpectedDataDirectory(string path)
